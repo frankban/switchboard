@@ -14,14 +14,10 @@ class Settings(object):
     _state = {}
 
     @classmethod
-    def init(cls, cache=None, mongo_host='localhost', mongo_port=27017,
-             mongo_db='switchboard', mongo_collection='switches',
-             **kwargs):
-        cls._state['SWITCHBOARD_MONGO_HOST'] = mongo_host
-        cls._state['SWITCHBOARD_MONGO_PORT'] = mongo_port
-        cls._state['SWITCHBOARD_MONGO_DB'] = mongo_db
-        cls._state['SWITCHBOARD_MONGO_COLLECTION'] = mongo_collection
+    def init(cls, cache=None, dburl=None, dbtable='switchboard', **kwargs):
         cls._state['SWITCHBOARD_CACHE'] = cache
+        cls._state['SWITCHBOARD_DBURL'] = dburl
+        cls._state['SWITCHBOARD_DBTABLE'] = dbtable
         remainder = kwargs.iteritems()
         remainder = [('SWITCHBOARD_%s' % k.upper(), v) for k, v in remainder]
         # convert timeouts to ints

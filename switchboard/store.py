@@ -34,7 +34,7 @@ class _BaseStore(object):
         raise NotImplemented
 
 
-class InMemoryStore(object):
+class InMemoryStore(_BaseStore):
     """In memory store to be used for development."""
 
     def __init__(self):
@@ -42,10 +42,11 @@ class InMemoryStore(object):
         self._versioned = None
 
     def save(self, item):
-        id_ = item.pop('id')
-        if not id_:
+        id_ = item.pop('id', None)
+        if id_ is None:
             id_ = len(self._items)
         self._items[id_] = item
+        return id_
 
     def filter(self, **kwargs):
         def match(item, filterdict):
@@ -54,7 +55,7 @@ class InMemoryStore(object):
                     return False
             return True
 
-        id_ = kwargs.pop('id')
+        id_ = kwargs.pop('id', None)
         if id_:
             item = self._items.get(id_)
             return [_withid(item, id_)] if item else []
@@ -66,7 +67,7 @@ class InMemoryStore(object):
 
     def remove(self, **kwargs):
         for item in self.filter(**kwargs):
-            self._items.pop(item['id'])
+            self._items.pop(item['id'], None)
 
     def count(self):
         return len(self._items)
@@ -77,7 +78,7 @@ class InMemoryStore(object):
         return self._versioned
 
 
-class SQLAlchemyStore(object):
+class SQLAlchemyStore(_BaseStore):
     """SQL store to be used in production."""
 
     def __init__(self, engine, table_name):
@@ -92,14 +93,20 @@ class SQLAlchemyStore(object):
 
     def get_or_create(self, defaults, **kwargs):
         with self._conn.begin():
-            super().get_or_create(defaults, **kwargs)
+            return super(SQLAlchemyStore, self).get_or_create(
+                defaults, **kwargs)
 
     def save(self, item):
         table = self._table
-        id_ = item.pop('id')
-        op = table.update().where(table.c.id == id_) if id_ else table.insert()
+        id_ = item.pop('id', None)
+        if id_ is None:
+            op = table.insert()
+        else:
+            op = table.update().where(table.c.id == id_)
         result = self._conn.execute(op.values(data=item))
-        return id_ or result.inserted_primary_key[0]
+        if id_ is None:
+            return result.inserted_primary_key[0]
+        return id_
 
     def filter(self, **kwargs):
         select = self._match(self._table.select(), kwargs)
@@ -122,14 +129,14 @@ class SQLAlchemyStore(object):
 
     def _match(self, op, filterdict):
         table = self._table
-        id_ = filterdict.pop('id')
+        id_ = filterdict.pop('id', None)
         if id_:
             op = op.where(table.c.id == id_)
         elif filterdict:
-            op = op.where(
+            op = op.where(sqla.and_(
                 table.c.data[key] == value
                 for key, value in filterdict.items()
-            )
+            ))
         return op
 
 

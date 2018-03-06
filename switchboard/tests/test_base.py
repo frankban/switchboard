@@ -41,7 +41,7 @@ class MockModel(VersioningModel):
     def __eq__(self, other):
         for a in self._attrs:
             # don't really care if IDs match, at least not for the tests
-            if a == '_id':
+            if a == 'id':
                 continue
             if not hasattr(other, a):
                 return False
@@ -53,7 +53,7 @@ class MockModel(VersioningModel):
 class TestModelDict(object):
 
     def teardown(self):
-        MockModel.c.drop()
+        MockModel.store.remove()
 
     def test_api(self):
         base_count = MockModel.count()
@@ -61,14 +61,14 @@ class TestModelDict(object):
         mydict = ModelDict(MockModel, key='key', value='value')
         mydict['foo'] = MockModel(key='foo', value='bar')
         assert_true(isinstance(mydict['foo'], MockModel))
-        assert_true(mydict['foo']._id)
+        assert_equals(mydict['foo'].id, 0)
         assert_equals(mydict['foo'].value, 'bar')
         assert_equals(MockModel.get(key='foo').value, 'bar')
         assert_equals(MockModel.count(), base_count + 1)
-        old_id = mydict['foo']._id
+        old_id = mydict['foo'].id
         mydict['foo'] = MockModel(key='foo', value='bar2')
         assert_true(isinstance(mydict['foo'], MockModel))
-        assert_equals(mydict['foo']._id, old_id)
+        assert_equals(mydict['foo'].id, old_id)
         assert_equals(mydict['foo'].value, 'bar2')
         assert_equals(MockModel.get(key='foo').value, 'bar2')
         assert_equals(MockModel.count(), base_count + 1)
@@ -87,8 +87,8 @@ class TestModelDict(object):
         instance = MockModel(key='test_expirey', value='hello')
         mydict['test_expirey'] = instance
 
-        assert_equals(len(mydict._cache), base_count + 1)
         assert_equals(mydict['test_expirey'], instance)
+        assert_equals(len(mydict._cache), base_count + 1)
 
         request_finished.send(Mock())
 
@@ -119,16 +119,16 @@ class TestModelDict(object):
         assert_equals(MockModel.get(key='hello').value, 'foo')
 
     def test_save_behavior(self):
-        mydict = ModelDict(MockModel, key='key', value='value',
-                                auto_create=True)
+        mydict = ModelDict(
+            MockModel, key='key', value='value', auto_create=True)
         mydict['hello'] = 'foo'
         for n in xrange(10):
             mydict[str(n)] = 'foo'
         assert_equals(len(mydict), 11)
         assert_equals(MockModel.count(), 11)
 
-        mydict = ModelDict(MockModel, key='key', value='value',
-                                auto_create=True)
+        mydict = ModelDict(
+            MockModel, key='key', value='value', auto_create=True)
         m = MockModel.get(key='hello')
         m.value = 'bar'
         m.save()
@@ -137,8 +137,8 @@ class TestModelDict(object):
         assert_equals(len(mydict), 11)
         assert_equals(mydict['hello'].value, 'bar')
 
-        mydict = ModelDict(MockModel, key='key', value='value',
-                                auto_create=True)
+        mydict = ModelDict(
+            MockModel, key='key', value='value', auto_create=True)
         m = MockModel.get(key='hello')
         m.value = 'bar2'
         m.save()
@@ -166,7 +166,7 @@ class TestCacheIntegration(object):
         self.mydict.cache = self.cache
 
     def teardown(self):
-        MockModel.c.drop()
+        MockModel.store.remove()
 
     def test_model_creation(self):
         instance = MockModel(key='hello', value='foo')

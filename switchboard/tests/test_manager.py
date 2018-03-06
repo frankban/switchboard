@@ -29,8 +29,8 @@ from ..models import (
     SELECTIVE, DISABLED, GLOBAL, INHERIT,
 )
 from ..manager import registry, SwitchManager
-from ..helpers import MockCollection
 from ..settings import settings
+from ..store import InMemoryStore
 
 
 class TestAPI(object):
@@ -53,7 +53,7 @@ class TestAPI(object):
         self.operator.register(HostConditionSet)
 
     def teardown(self):
-        Switch.c.drop()
+        Switch.store = InMemoryStore()
 
     def test_builtin_registration(self):
         assert_true('switchboard.builtins.QueryStringConditionSet' in registry)
@@ -730,10 +730,8 @@ class TestAPI(object):
 class TestConfigure(object):
     def setup(self):
         self.config = dict(
-            mongo_host='mongodb',
-            mongo_port=8080,
-            mongo_db='test',
-            mongo_collection='test_switches',
+            dburl='sqlite:///:memory:',
+            dbtable='test',
             debug=True,
             switch_defaults=dict(a=1),
             auto_create=True,
@@ -742,33 +740,32 @@ class TestConfigure(object):
         )
 
     def teardown(self):
-        Switch.c = MockCollection()
+        Switch.store = InMemoryStore()
 
     def assert_settings(self):
         for k, v in self.config.iteritems():
             assert_equals(getattr(settings, 'SWITCHBOARD_%s' % k.upper()), v)
 
-    @patch('switchboard.manager.Connection')
-    def test_unnested(self, Connection):
+    @patch('switchboard.manager.sqla.create_engine')
+    def test_unnested(self, create_engine):
         configure(self.config)
         self.assert_settings()
-        assert_false(isinstance(Switch.c, MockCollection))
+        assert_false(isinstance(Switch.store, InMemoryStore))
 
-    @patch('switchboard.manager.Connection')
-    def test_nested(self, Connection):
+    @patch('switchboard.manager.sqla.create_engine')
+    def test_nested(self, create_engine):
         cfg = {}
         for k, v in self.config.iteritems():
             cfg['switchboard.%s' % k] = v
         cfg['foo.bar'] = 'baz'
         configure(cfg, nested=True)
         self.assert_settings()
-        assert_false(isinstance(Switch.c, MockCollection))
+        assert_false(isinstance(Switch.store, InMemoryStore))
 
-    @patch('switchboard.manager.Connection')
-    def test_database_failure(self, Connection):
-        Connection.side_effect = Exception('Boom!')
-        configure(self.config)
-        assert_true(isinstance(Switch.c, MockCollection))
+    @patch('switchboard.manager.sqla.create_engine')
+    def test_database_failure(self, create_engine):
+        create_engine.side_effect = Exception('Boom!')
+        assert_raises(Exception, lambda: configure(self.config))
 
 
 class TestManagerConcurrency(object):

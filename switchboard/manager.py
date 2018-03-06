@@ -49,12 +49,11 @@ def configure(config={}, nested=False, cache=None):
 
     # Establish the connection to the database.
     timeout = getattr(settings, 'SWITCHBOARD_TIMEOUT', 10)
-    dburl = getattr(settings, 'SWITCHBOARD_DBURL')
+    dburl = settings.SWITCHBOARD_DBURL
     if dburl:
         engine = sqla.create_engine(
             dburl, connect_args={'connect_timeout': timeout})
-        table_name = getattr(settings, 'SWITCHBOARD_TABLE', 'switchboard')
-        Switch.store = SQLAlchemyStore(engine, table_name)
+        Switch.store = SQLAlchemyStore(engine, settings.SWITCHBOARD_DBTABLE)
     # Register the builtins.
     __import__('switchboard.builtins')
 

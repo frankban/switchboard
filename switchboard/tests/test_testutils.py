@@ -20,16 +20,12 @@ from ..manager import SwitchManager
 from ..testutils import switches
 
 
-def teardown_collection():
-    Switch.c.drop()
-
-
 class TestSwitchContextManager(object):
     def setup(self):
         self.operator = SwitchManager(auto_create=True)
 
     def teardown(self):
-        teardown_collection()
+        Switch.store.remove()
 
     def test_as_decorator(self):
         switch = self.operator['test']

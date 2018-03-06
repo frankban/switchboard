@@ -66,7 +66,7 @@ class Model(object):
 
     @classmethod
     def get(cls, **kwargs):
-        data = cls.store.get(kwargs)
+        data = cls.store.get(**kwargs)
         return cls(**data) if data else None
 
     @classmethod
@@ -78,8 +78,11 @@ class Model(object):
         is the retrieved or created object and created is a boolean specifying
         whether a new object was created.
         '''
-        data, created = self.store.get_or_create(defaults or {}, **kwargs)
-        return cls(**data), created
+        data, created = cls.store.get_or_create(defaults or {}, **kwargs)
+        instance = cls(**data)
+        if created:
+            cls.post_save.send(instance)
+        return instance, created
 
     @classmethod
     def find(cls, **kwargs):
@@ -181,7 +184,7 @@ class VersioningModel(Model):
         if not hasattr(self, 'id'):
             return self.__class__()
         vc = self._versioned_collection()
-        versions = vc.find(dict(switch_id=self.id))
+        versions = vc.filter(switch_id=self.id)
         previous = dict()
         # build up the previous state based on all past deltas
         if versions:
@@ -433,7 +436,7 @@ class Switch(VersioningModel):
         Return a display-friendly list of all versions.
         '''
         vc = self._versioned_collection()
-        versions = vc.find(dict(switch_id=self.id))
+        versions = vc.filter(switch_id=self.id)
         if not versions:
             return dict(versions={})
         return list(versions.sort('timestamp', DESCENDING))
