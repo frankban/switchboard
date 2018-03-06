@@ -18,12 +18,12 @@ from nose.tools import (
 from mock import Mock, patch
 from blinker import Signal
 
-from ..base import MongoModelDict, CachedDict
-from ..models import VersioningMongoModel
+from ..base import ModelDict, CachedDict
+from ..models import VersioningModel
 from ..signals import request_finished
 
 
-class MockModel(VersioningMongoModel):
+class MockModel(VersioningModel):
 
     def __init__(self, *args, **kwargs):
         self._attrs = []
@@ -50,7 +50,7 @@ class MockModel(VersioningMongoModel):
         return True
 
 
-class TestMongoModelDict(object):
+class TestModelDict(object):
 
     def teardown(self):
         MockModel.c.drop()
@@ -58,7 +58,7 @@ class TestMongoModelDict(object):
     def test_api(self):
         base_count = MockModel.count()
 
-        mydict = MongoModelDict(MockModel, key='key', value='value')
+        mydict = ModelDict(MockModel, key='key', value='value')
         mydict['foo'] = MockModel(key='foo', value='bar')
         assert_true(isinstance(mydict['foo'], MockModel))
         assert_true(mydict['foo']._id)
@@ -80,7 +80,7 @@ class TestMongoModelDict(object):
     def test_expirey(self):
         base_count = MockModel.count()
 
-        mydict = MongoModelDict(MockModel, key='key', value='value')
+        mydict = ModelDict(MockModel, key='key', value='value')
 
         assert_equals(mydict._cache, None)
 
@@ -98,13 +98,13 @@ class TestMongoModelDict(object):
 
     def test_no_auto_create(self):
         # without auto_create
-        mydict = MongoModelDict(MockModel, key='key', value='value')
+        mydict = ModelDict(MockModel, key='key', value='value')
         assert_raises(KeyError, lambda x: x['hello'], mydict)
         assert_equals(MockModel.count(), 0)
 
     def test_auto_create_no_value(self):
         # with auto_create and no value
-        mydict = MongoModelDict(MockModel, key='key', value='value',
+        mydict = ModelDict(MockModel, key='key', value='value',
                                 auto_create=True)
         repr(mydict['hello'])
         assert_equals(MockModel.count(), 1)
@@ -112,14 +112,14 @@ class TestMongoModelDict(object):
 
     def test_auto_create(self):
         # with auto_create and value
-        mydict = MongoModelDict(MockModel, key='key', value='value',
+        mydict = ModelDict(MockModel, key='key', value='value',
                                 auto_create=True)
         mydict['hello'] = MockModel(key='hello', value='foo')
         assert_equals(MockModel.count(), 1)
         assert_equals(MockModel.get(key='hello').value, 'foo')
 
     def test_save_behavior(self):
-        mydict = MongoModelDict(MockModel, key='key', value='value',
+        mydict = ModelDict(MockModel, key='key', value='value',
                                 auto_create=True)
         mydict['hello'] = 'foo'
         for n in xrange(10):
@@ -127,7 +127,7 @@ class TestMongoModelDict(object):
         assert_equals(len(mydict), 11)
         assert_equals(MockModel.count(), 11)
 
-        mydict = MongoModelDict(MockModel, key='key', value='value',
+        mydict = ModelDict(MockModel, key='key', value='value',
                                 auto_create=True)
         m = MockModel.get(key='hello')
         m.value = 'bar'
@@ -137,7 +137,7 @@ class TestMongoModelDict(object):
         assert_equals(len(mydict), 11)
         assert_equals(mydict['hello'].value, 'bar')
 
-        mydict = MongoModelDict(MockModel, key='key', value='value',
+        mydict = ModelDict(MockModel, key='key', value='value',
                                 auto_create=True)
         m = MockModel.get(key='hello')
         m.value = 'bar2'
@@ -148,10 +148,10 @@ class TestMongoModelDict(object):
         assert_equals(mydict['hello'].value, 'bar2')
 
     def test_signals_are_connected(self):
-        MongoModelDict(MockModel, key='key', value='value',
+        ModelDict(MockModel, key='key', value='value',
                        auto_create=True)
-        post_save = VersioningMongoModel.post_save
-        post_delete = VersioningMongoModel.post_delete
+        post_save = VersioningModel.post_save
+        post_delete = VersioningModel.post_delete
         assert_true(post_save.has_receivers_for(MockModel))
         assert_true(post_delete.has_receivers_for(MockModel))
         assert_true(request_finished.has_receivers_for(Signal.ANY))
@@ -161,7 +161,7 @@ class TestCacheIntegration(object):
     def setup(self):
         self.cache = Mock()
         self.cache.get.return_value = {}
-        self.mydict = MongoModelDict(MockModel, key='key', value='value',
+        self.mydict = ModelDict(MockModel, key='key', value='value',
                                      auto_create=True)
         self.mydict.cache = self.cache
 

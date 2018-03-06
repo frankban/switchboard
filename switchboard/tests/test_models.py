@@ -12,17 +12,17 @@ from nose.tools import assert_equals, assert_true, assert_false
 from mock import Mock, patch
 
 from ..manager import SwitchManager
-from ..models import MongoModel, VersioningMongoModel, Switch
+from ..models import Model, VersioningModel, Switch
 
 
-class TestMongoModel(object):
+class TestModel(object):
     def setup(self):
-        self.m = MongoModel()
+        self.m = Model()
 
     def teardown(self):
-        MongoModel.c.drop()
+        Model.c.drop()
 
-    @patch('switchboard.models.MongoModel.update')
+    @patch('switchboard.models.Model.update')
     def test_get_or_create_get(self, update):
         self.m.create(key=0, foo='bar')
         defaults = dict(foo='bar')
@@ -31,7 +31,7 @@ class TestMongoModel(object):
         assert_false(update.called)
         assert_equals(instance.foo, 'bar')
 
-    @patch('switchboard.models.MongoModel.update')
+    @patch('switchboard.models.Model.update')
     @patch('switchboard.helpers.MockCollection.find_one')
     def test_get_or_create_create(self, find_one, update):
         find_one.side_effect = [None, dict(foo='bar', key=0)]
@@ -42,33 +42,33 @@ class TestMongoModel(object):
         assert_equals(instance.foo, 'bar')
 
 
-class TestVersioningMongoModel(object):
+class TestVersioningModel(object):
     def setup(self):
-        self.m = VersioningMongoModel(_id='0')
+        self.m = VersioningModel(_id='0')
 
     def teardown(self):
-        VersioningMongoModel._versioned_collection().drop()
+        VersioningModel._versioned_collection().drop()
 
     def test_diff_fields_added(self):
-        self.m.previous_version = lambda: VersioningMongoModel(a=1, b=2)
+        self.m.previous_version = lambda: VersioningModel(a=1, b=2)
         self.m.c.find_one = lambda x: dict(a=1, b=2, c=3)
         delta = self.m._diff()
         assert_equals(delta['added'], dict(c=3))
 
     def test_diff_fields_deleted(self):
-        self.m.previous_version = lambda: VersioningMongoModel(a=1, b=2)
+        self.m.previous_version = lambda: VersioningModel(a=1, b=2)
         self.m.c.find_one = lambda x: dict(a=1)
         delta = self.m._diff()
         assert_equals(delta['deleted'], dict(b=2))
 
     def test_diff_fields_changed(self):
-        self.m.previous_version = lambda: VersioningMongoModel(a=1, b=2)
+        self.m.previous_version = lambda: VersioningModel(a=1, b=2)
         self.m.c.find_one = lambda x: dict(a=1, b=3)
         delta = self.m._diff()
         assert_equals(delta['changed'], dict(b=(2, 3)))
 
     def test_diff_fields_same(self):
-        self.m.previous_version = lambda: VersioningMongoModel(a=1, b=2)
+        self.m.previous_version = lambda: VersioningModel(a=1, b=2)
         self.m.c.find_one = lambda x: dict(a=1, b=2)
         delta = self.m._diff()
         assert_equals(delta['changed'], dict())
@@ -84,7 +84,7 @@ class TestVersioningMongoModel(object):
         assert_equals(delta['deleted'], dict())
 
     def test_diff_removed(self):
-        self.m.previous_version = lambda: VersioningMongoModel(a=1, b=2)
+        self.m.previous_version = lambda: VersioningModel(a=1, b=2)
         self.m.c.find_one = lambda x: None
         delta = self.m._diff()
         assert_equals(delta['changed'], dict())

@@ -15,6 +15,10 @@ from webob import Request
 log = logging.getLogger(__name__)
 
 
+class MockConnection(object):
+    pass
+
+
 class MockRequest(Request):
     """
     A mock request object which stores a user

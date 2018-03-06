@@ -62,7 +62,7 @@ class TestAPI(object):
         assert_equals(len(list(self.operator.get_condition_sets())), 3,
                       self.operator)
 
-    @patch('switchboard.base.MongoModelDict.get_default')
+    @patch('switchboard.base.ModelDict.get_default')
     def test_error(self, get_default):
         # force the is_active call to fail right away
         get_default.side_effect = Exception('Boom!')
