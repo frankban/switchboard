@@ -14,8 +14,8 @@ from bottle import Bottle, request, mako_view as view
 from webob.exc import HTTPNotFound
 
 from .. import operator, signals
-from ..helpers import MockCollection
 from ..models import Switch
+from ..store import InMemoryStore
 from .utils import (
     json_api,
     SwitchboardException,
@@ -48,11 +48,11 @@ def index():
     switches.sort(key=attrgetter(sort_by), reverse=reverse)
 
     messages = []
-    if isinstance(Switch.c, MockCollection):
-        m = dict(status='warning',
-                 message='The datastore is in test mode, possibly due \
-                         to an error with the real datastore.')
-        messages.append(m)
+    if isinstance(Switch.store, InMemoryStore):
+        messages.append({
+            'status': 'warning',
+            'message': 'Using an in memory development store.',
+        })
 
     return dict(
         switches=[s.to_dict(operator) for s in switches],

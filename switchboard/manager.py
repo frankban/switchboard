@@ -236,7 +236,6 @@ class SwitchManager(ModelDict):
 
     def as_request(self, user=None, ip_address=None):
         from .helpers import MockRequest
-
         return MockRequest(user, ip_address)
 
     def version_switch(self, switch):
