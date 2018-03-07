@@ -246,7 +246,7 @@ class ModelDict(CachedDict):
     Specifying ``instances=True`` will cause the cache to store instances
     rather than simple values.
 
-    If ``auto_create=True`` accessing mongodict[key] when key does not exist
+    If ``auto_create=True`` accessing modeldict[key] when key does not exist
     will attempt to create it in the collection.
 
     Functions in two different ways, depending on the constructor:
