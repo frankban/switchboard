@@ -77,13 +77,9 @@ Switchboard has only a handful of settings, none of which are required:
 +------------------------------+-------------+--------------------------------+
 | Key                          | Default     | Description                    |
 +==============================+=============+================================+
-| switchboard.mongo_host       | localhost   | The host for MongoDB.          |
+| switchboard.dburl            |             | The db URL.                    |
 +------------------------------+-------------+--------------------------------+
-| switchboard.mongo_port       | 27017       | The port for MongoDB.          |
-+------------------------------+-------------+--------------------------------+
-| switchboard.mongo_db         | switchboard | The database name.             |
-+------------------------------+-------------+--------------------------------+
-| switchboard.mongo_collection | switches    | The collection name.           |
+| switchboard.dbtable          | switchboard | The DB table to use.           |
 +------------------------------+-------------+--------------------------------+
 | switchboard.internal_ips     |             | Comma-delimited list of IPs.   |
 +------------------------------+-------------+--------------------------------+
@@ -106,13 +102,11 @@ argument can be omitted.
 
 An example configuration that needs ``nested=True``::
 
-    switchboard.mongo_host=mongodb.example.org
-    switchboard.mong_port=27018
+    switchboard.dburl=postgresql://user:passwd@1.2.3.4:5432/switches
 
 And one that does not need ``nested=True``::
 
-    mongo_host=mongodb.example.org
-    mong_port=27018
+    dburl=postgresql://user:passwd@1.2.3.4:5432/switches
 
 The Admin UI
 ^^^^^^^^^^^^
@@ -159,7 +153,7 @@ Caching
 ^^^^^^^
 
 By default, switchboard will query all the switches every time one is checked.  In
-many applications, this may be more mongo queries than desired.  Switchboard supports
+many applications, this may be more queries than desired.  Switchboard supports
 a cache system, e.g. via memcache::
 
     import pylibmc
@@ -167,7 +161,7 @@ a cache system, e.g. via memcache::
     memcache_client = pylibmc.Client(['127.0.0.1'])
     switchboard.configure(config, cache=memcache_client)
 
-This does require memcache to be running, but limits mongodb queries to only occur
+This does require memcache to be running, but limits queries to only occur
 after a switch is changed and the cache is invalidated.
 
 Custom cache objects can be used instead of a memcache client, to implement different caching

@@ -10,7 +10,6 @@ from datetime import datetime
 import logging
 
 from blinker import signal
-from pymongo import DESCENDING
 
 from .settings import settings
 from .store import InMemoryStore
