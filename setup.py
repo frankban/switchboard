@@ -22,7 +22,7 @@ setup(name='switchboard',
           'blinker>=1.2',
           'bottle== 0.12.8',
           'Mako>=0.9',
-          'SQLAlchemy>=1.2.4'
+          'SQLAlchemy>=1.2.4',
           'WebOb>=0.9',
       ],
       zip_safe=False,
