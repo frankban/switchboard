@@ -76,8 +76,6 @@ class SwitchManager(ModelDict):
         kwargs['value'] = 'value'
         self.result_cache = None
         self.context = {}
-        Model.post_save.connect(self.version_switch)
-        Model.post_delete.connect(self.version_switch)
         super(SwitchManager, self).__init__(*new_args, **kwargs)
 
     def __unicode__(self):
@@ -237,27 +235,6 @@ class SwitchManager(ModelDict):
     def as_request(self, user=None, ip_address=None):
         from .helpers import MockRequest
         return MockRequest(user, ip_address)
-
-    def version_switch(self, switch):
-        '''
-        Save changes made to a switch. Triggered by create and update events
-        on a switch model. The changes are saved as diffs and reassembled to
-        create a switch history. Allows changes to switches to be audited.
-        '''
-        # Try to get the username from both User objects and user dicts.
-        try:
-            user = self.context.get('user', {})
-            if hasattr(user, 'username'):
-                username = user.username
-            else:
-                username = user.get('username', '')
-        except AttributeError:
-            username = ''
-
-        try:
-            switch.save_version(username=username)
-        except:
-            log.warning('Unable to save the switch version', exc_info=True)
 
 
 auto_create = getattr(settings, 'SWITCHBOARD_AUTO_CREATE', True)

@@ -232,10 +232,3 @@ def remove_condition():
     signals.switch_condition_removed.send(switch)
 
     return switch.to_dict(operator)
-
-
-@app.get('/history')
-@json_api
-def history():
-    key = request.query.key
-    return Switch.get(key=key).list_versions()

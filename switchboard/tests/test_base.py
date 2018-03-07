@@ -19,11 +19,11 @@ from mock import Mock, patch
 from blinker import Signal
 
 from ..base import ModelDict, CachedDict
-from ..models import VersioningModel
+from ..models import Model
 from ..signals import request_finished
 
 
-class MockModel(VersioningModel):
+class MockModel(Model):
 
     def __init__(self, *args, **kwargs):
         self._attrs = []
@@ -150,8 +150,8 @@ class TestModelDict(object):
     def test_signals_are_connected(self):
         ModelDict(MockModel, key='key', value='value',
                        auto_create=True)
-        post_save = VersioningModel.post_save
-        post_delete = VersioningModel.post_delete
+        post_save = Model.post_save
+        post_delete = Model.post_delete
         assert_true(post_save.has_receivers_for(MockModel))
         assert_true(post_delete.has_receivers_for(MockModel))
         assert_true(request_finished.has_receivers_for(Signal.ANY))

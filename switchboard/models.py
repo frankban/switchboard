@@ -31,9 +31,7 @@ class Model(object):
     # Store could be lazily overridden by manager.configure().
     store = InMemoryStore()
 
-    pre_save = signal('pre_save')
     post_save = signal('post_save')
-    pre_delete = signal('pre_delete')
     post_delete = signal('post_delete')
 
     def __init__(self, *args, **kwargs):
@@ -50,7 +48,6 @@ class Model(object):
         except AttributeError:
             id_ = None
         previous = self.get(id=id_) if id_ else None
-        self.pre_save.send(previous)
         self.id = self.store.save(self.to_bson())
         self.post_save.send(self)
         return self.id
@@ -91,7 +88,6 @@ class Model(object):
     @classmethod
     def remove(cls, **kwargs):
         instance = cls.get(**kwargs)
-        cls.pre_delete.send(instance)
         result = cls.store.remove(**kwargs)
         cls.post_delete.send(instance)
         return result
@@ -105,107 +101,7 @@ class Model(object):
         return cls.store.count()
 
 
-class VersioningModel(Model):
-
-    def __init__(self, *args, **kwargs):
-        super(VersioningModel, self).__init__(*args, **kwargs)
-
-    @classmethod
-    def _versioned_collection(cls):
-        return cls.store.versioned()
-
-    def _diff(self):
-        # Need to verify that the data contained in self is actually still in
-        # the collection
-        if hasattr(self, 'id'):
-            curr = self.get(id=self.id)
-            curr = curr.to_bson() if curr else None
-        else:
-            curr = None
-        prev = self.previous_version()
-        prev = prev.to_bson() if prev else None
-        # Both models are present so something's changed between them
-        if prev and curr:
-            current_fields = curr.keys()
-            previous_fields = prev.keys()
-            added = [f for f in current_fields if f not in previous_fields]
-            deleted = [f for f in previous_fields if f not in current_fields]
-            changed = [f for f in current_fields if (f in previous_fields
-                                                     and prev[f] != curr[f])]
-            delta = dict(
-                added=dict([(k, curr[k]) for k in added]),
-                deleted=dict([(k, prev[k]) for k in deleted]),
-                changed=dict([(k, (prev[k], curr[k])) for k in changed]),
-            )
-        elif prev:  # Model's been deleted
-            delta = dict(
-                added={},
-                deleted=prev,
-                changed={},
-            )
-        elif curr:  # Model's been added
-            delta = dict(
-                added=curr,
-                deleted={},
-                changed={},
-            )
-        else:       # Neither model exists, no-op
-            delta = dict(
-                added={},
-                deleted={},
-                changed={},
-            )
-        return delta
-
-    def save_version(self, **kwargs):
-        delta = self._diff()
-        # if nothing changed, don't save anything
-        if delta and (delta['added'] or delta['deleted'] or delta['changed']):
-            doc = dict(
-                switch_id=self.id,
-                timestamp=datetime.utcnow(),
-                delta=delta,
-                **kwargs
-            )
-            self._versioned_collection().save(doc)
-
-    def _unpack_delta(self, version):
-        '''
-        Helper function that makes it easier to access the data nested with a
-        delta. Returns a tuple of (delta, added, deleted, changed).
-        '''
-        delta = version.get('delta', {})
-        added = delta.get('added', {})
-        deleted = delta.get('deleted', {})
-        changed = delta.get('changed', {})
-        return delta, added, deleted, changed
-
-    def previous_version(self):
-        if not hasattr(self, 'id'):
-            return self.__class__()
-        vc = self._versioned_collection()
-        versions = vc.filter(switch_id=self.id)
-        previous = dict()
-        # build up the previous state based on all past deltas
-        if versions:
-            # Before sorting, ensure we're working with a list and not a cursor
-            # or other iterable.
-            versions = list(versions)
-            versions.sort(key=lambda x: x['timestamp'])
-            for v in versions:
-                delta, added, deleted, changed = self._unpack_delta(v)
-                previous.update(added)
-                for k in deleted.keys():
-                    if k in previous:
-                        del previous[k]
-                for k, v in changed.iteritems():
-                    old, new = v
-                    previous[k] = new
-        previous = self.__class__(**previous) if previous else None
-        return previous
-
-
-class Switch(VersioningModel):
+class Switch(Model):
     """
     Stores information on all switches. Generally handled under the global
     ``switchboard`` namespace.
@@ -430,13 +326,3 @@ class Switch(VersioningModel):
         if last:
             data['conditions'].append(last)
         return data
-
-    def list_versions(self):
-        '''
-        Return a display-friendly list of all versions.
-        '''
-        vc = self._versioned_collection()
-        versions = vc.filter(switch_id=self.id)
-        if not versions:
-            return dict(versions={})
-        return list(versions.sort('timestamp', DESCENDING))
