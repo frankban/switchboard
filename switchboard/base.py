@@ -10,7 +10,7 @@ import time
 import logging
 import threading
 
-from .models import MongoModel
+from .models import Model
 from .signals import request_finished
 from .settings import settings
 
@@ -238,7 +238,7 @@ class CachedDict(threading.local):
         self._last_updated = None
 
 
-class MongoModelDict(CachedDict):
+class ModelDict(CachedDict):
     """
     Dictionary-style access to documents in a collection. Populates a cache
     and a local in-memory store to avoid multiple hits to the collection.
@@ -254,7 +254,7 @@ class MongoModelDict(CachedDict):
         # Given a document that has a attribute named ``foo`` where the value
         # is "bar":
 
-        mydict = MongoModelDict(Model, value='foo')
+        mydict = ModelDict(Model, value='foo')
         mydict['test']
         >>> 'bar' #doctest: +SKIP
 
@@ -262,7 +262,7 @@ class MongoModelDict(CachedDict):
     constructor. However, this will be used as part of the cache key, so it's
     recommended to access it in the same way throughout your code.
 
-        mydict = MongoModelDict(Model, key='foo', value='id')
+        mydict = ModelDict(Model, key='foo', value='id')
         mydict['bar']
         >>> 'test' #doctest: +SKIP
 
@@ -271,7 +271,7 @@ class MongoModelDict(CachedDict):
                  auto_create=False, *args, **kwargs):
         assert value is not None
 
-        super(MongoModelDict, self).__init__(*args, **kwargs)
+        super(ModelDict, self).__init__(*args, **kwargs)
 
         cls_name = type(self).__name__
         name = model.__name__
@@ -287,22 +287,19 @@ class MongoModelDict(CachedDict):
                                                                  name,
                                                                  self.key)
         request_finished.connect(self._cleanup)
-        MongoModel.post_save.connect(self._post_save)
-        MongoModel.post_delete.connect(self._post_delete)
+        Model.post_save.connect(self._post_save)
+        Model.post_delete.connect(self._post_delete)
 
     def __setitem__(self, key, value):
         if isinstance(value, self.model):
             value = getattr(value, self.value)
-
         instance, created = self.model.get_or_create(
             defaults={self.value: value},
             **{self.key: key}
         )
-
-        # Ensure we're updating the value in the database if it changes
-        if getattr(instance, self.value) != value:
+        if not created and getattr(instance, self.value) != value:
             setattr(instance, self.value, value)
-            self.model.update({self.key: key}, {'$set': {self.value: value}})
+            instance.save()
 
     def __delitem__(self, key):
         self.model.remove(**{self.key: key})

@@ -29,8 +29,8 @@ from ..models import (
     SELECTIVE, DISABLED, GLOBAL, INHERIT,
 )
 from ..manager import registry, SwitchManager
-from ..helpers import MockCollection
 from ..settings import settings
+from ..store import InMemoryStore
 
 
 class TestAPI(object):
@@ -53,7 +53,7 @@ class TestAPI(object):
         self.operator.register(HostConditionSet)
 
     def teardown(self):
-        Switch.c.drop()
+        Switch.store = InMemoryStore()
 
     def test_builtin_registration(self):
         assert_true('switchboard.builtins.QueryStringConditionSet' in registry)
@@ -62,7 +62,7 @@ class TestAPI(object):
         assert_equals(len(list(self.operator.get_condition_sets())), 3,
                       self.operator)
 
-    @patch('switchboard.base.MongoModelDict.get_default')
+    @patch('switchboard.base.ModelDict.get_default')
     def test_error(self, get_default):
         # force the is_active call to fail right away
         get_default.side_effect = Exception('Boom!')
@@ -679,61 +679,12 @@ class TestAPI(object):
 
         assert_false(self.operator.is_active('test:child'))
 
-    def test_version_switch_no_user(self):
-        switch = Mock()
-        switch.save_version = Mock()
-        self.operator.context = dict()
-        self.operator.version_switch(switch)
-        switch.save_version.assert_called_with(username='')
-
-    def test_version_switch_user_dict(self):
-        username = 'test'
-        switch = Mock()
-        switch.save_version = Mock()
-        self.operator.context = dict(user=dict(username=username))
-        self.operator.version_switch(switch)
-        switch.save_version.assert_called_with(username=username)
-
-    def test_version_switch_user_class(self):
-        username = 'test'
-        switch = Mock()
-        switch.save_version = Mock()
-        self.operator.context = dict(user=Mock(username=username))
-        self.operator.version_switch(switch)
-        switch.save_version.assert_called_with(username=username)
-
-    def test_version_switch_nonuser_class(self):
-        class NonUser:
-            pass
-        switch = Mock()
-        switch.save_version = Mock()
-        self.operator.context = dict(user=NonUser())
-        self.operator.version_switch(switch)
-        switch.save_version.assert_called_with(username='')
-
-    def test_version_switch_nonuser_dict(self):
-        switch = Mock()
-        switch.save_version = Mock()
-        self.operator.context = dict(user=dict())
-        self.operator.version_switch(switch)
-        switch.save_version.assert_called_with(username='')
-
-    def test_version_switch_save_error(self):
-        switch = Mock()
-        switch.save_version = Mock()
-        switch.save_version.side_effect = Exception('Boom!')
-        self.operator.context = dict()
-        # Don't need to assert, just need to make sure things don't explode.
-        self.operator.version_switch(switch)
-
 
 class TestConfigure(object):
     def setup(self):
         self.config = dict(
-            mongo_host='mongodb',
-            mongo_port=8080,
-            mongo_db='test',
-            mongo_collection='test_switches',
+            dburl='sqlite:///:memory:',
+            dbtable='test',
             debug=True,
             switch_defaults=dict(a=1),
             auto_create=True,
@@ -742,33 +693,32 @@ class TestConfigure(object):
         )
 
     def teardown(self):
-        Switch.c = MockCollection()
+        Switch.store = InMemoryStore()
 
     def assert_settings(self):
         for k, v in self.config.iteritems():
             assert_equals(getattr(settings, 'SWITCHBOARD_%s' % k.upper()), v)
 
-    @patch('switchboard.manager.Connection')
-    def test_unnested(self, Connection):
+    @patch('switchboard.manager.sqla.create_engine')
+    def test_unnested(self, create_engine):
         configure(self.config)
         self.assert_settings()
-        assert_false(isinstance(Switch.c, MockCollection))
+        assert_false(isinstance(Switch.store, InMemoryStore))
 
-    @patch('switchboard.manager.Connection')
-    def test_nested(self, Connection):
+    @patch('switchboard.manager.sqla.create_engine')
+    def test_nested(self, create_engine):
         cfg = {}
         for k, v in self.config.iteritems():
             cfg['switchboard.%s' % k] = v
         cfg['foo.bar'] = 'baz'
         configure(cfg, nested=True)
         self.assert_settings()
-        assert_false(isinstance(Switch.c, MockCollection))
+        assert_false(isinstance(Switch.store, InMemoryStore))
 
-    @patch('switchboard.manager.Connection')
-    def test_database_failure(self, Connection):
-        Connection.side_effect = Exception('Boom!')
-        configure(self.config)
-        assert_true(isinstance(Switch.c, MockCollection))
+    @patch('switchboard.manager.sqla.create_engine')
+    def test_database_failure(self, create_engine):
+        create_engine.side_effect = Exception('Boom!')
+        assert_raises(Exception, lambda: configure(self.config))
 
 
 class TestManagerConcurrency(object):

@@ -8,17 +8,19 @@ switchboard.manager
 
 import logging
 
-from pymongo import Connection
+import sqlalchemy as sqla
 
-from .base import MongoModelDict
+from .base import ModelDict
 from .models import (
-    MongoModel,
+    Model,
     Switch,
     DISABLED, SELECTIVE, GLOBAL, INHERIT,
     INCLUDE, EXCLUDE,
 )
 from .proxy import SwitchProxy
 from .settings import settings, Settings
+from .store import SQLAlchemyStore
+
 
 log = logging.getLogger(__name__)
 # These are (mostly) read-only module variables since we want it shared among
@@ -38,36 +40,25 @@ def nested_config(config):
 
 
 def configure(config={}, nested=False, cache=None):
-    """
-    Useful for when you need to control Switchboard's setup
-    """
+    """Useful for when you need to control Switchboard's setup."""
     if nested:
         config = nested_config(config)
-    # Re-read settings to make sure we have everything
+    # Re-read settings to make sure we have everything.
     Settings.init(cache=cache, **config)
-
     operator.cache = cache
 
-    # Establish the connection to Mongo
-    mongo_timeout = getattr(settings, 'SWITCHBOARD_MONGO_TIMEOUT', None)
-    # The config is in ms to match memcached, but pymongo wants seconds
-    mongo_timeout = mongo_timeout // 1000 if mongo_timeout else mongo_timeout
-    # Ensure we have an integer for port and not a string
-    mongo_port = int(settings.SWITCHBOARD_MONGO_PORT)
-    try:
-        conn = Connection(settings.SWITCHBOARD_MONGO_HOST,
-                          mongo_port,
-                          network_timeout=mongo_timeout)
-        db = conn[settings.SWITCHBOARD_MONGO_DB]
-        collection = db[settings.SWITCHBOARD_MONGO_COLLECTION]
-        Switch.c = collection
-    except:
-        log.exception('Unable to connect to the datastore')
-    # Register the builtins
+    # Establish the connection to the database.
+    timeout = getattr(settings, 'SWITCHBOARD_TIMEOUT', 10)
+    dburl = settings.SWITCHBOARD_DBURL
+    if dburl:
+        engine = sqla.create_engine(
+            dburl, connect_args={'connect_timeout': timeout})
+        Switch.store = SQLAlchemyStore(engine, settings.SWITCHBOARD_DBTABLE)
+    # Register the builtins.
     __import__('switchboard.builtins')
 
 
-class SwitchManager(MongoModelDict):
+class SwitchManager(ModelDict):
     DISABLED = DISABLED
     SELECTIVE = SELECTIVE
     GLOBAL = GLOBAL
@@ -80,14 +71,11 @@ class SwitchManager(MongoModelDict):
         # Inject args and kwargs that are known quantities; the SwitchManager
         # will always deal with the Switch model and so on.
         new_args = [Switch]
-        for a in args:
-            new_args.append(a)
+        new_args.extend(args)
         kwargs['key'] = 'key'
         kwargs['value'] = 'value'
         self.result_cache = None
         self.context = {}
-        MongoModel.post_save.connect(self.version_switch)
-        MongoModel.post_delete.connect(self.version_switch)
         super(SwitchManager, self).__init__(*new_args, **kwargs)
 
     def __unicode__(self):
@@ -246,29 +234,7 @@ class SwitchManager(MongoModelDict):
 
     def as_request(self, user=None, ip_address=None):
         from .helpers import MockRequest
-
         return MockRequest(user, ip_address)
-
-    def version_switch(self, switch):
-        '''
-        Save changes made to a switch. Triggered by create and update events
-        on a switch model. The changes are saved as diffs and reassembled to
-        create a switch history. Allows changes to switches to be audited.
-        '''
-        # Try to get the username from both User objects and user dicts.
-        try:
-            user = self.context.get('user', {})
-            if hasattr(user, 'username'):
-                username = user.username
-            else:
-                username = user.get('username', '')
-        except AttributeError:
-            username = ''
-
-        try:
-            switch.save_version(username=username)
-        except:
-            log.warning('Unable to save the switch version', exc_info=True)
 
 
 auto_create = getattr(settings, 'SWITCHBOARD_AUTO_CREATE', True)

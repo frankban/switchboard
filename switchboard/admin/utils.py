@@ -41,7 +41,7 @@ def json_api(func):
         except Invalid, e:
             response = {
                 "success": False,
-                "data": u','.join(map(unicode, e.messages)),
+                "data": unicode(e),
             }
         except Exception:
             if hasattr(settings, 'DEBUG') and settings.DEBUG:

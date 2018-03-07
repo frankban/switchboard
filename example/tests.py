@@ -49,7 +49,7 @@ class TestAdmin(object):
     def setup_class(cls):
         cls.b = Browser()
         # Ensure we're working with a clean slate.
-        Switch.c.drop()
+        Switch.store.remove()
 
     @classmethod
     def teardown_class(cls):
@@ -61,7 +61,7 @@ class TestAdmin(object):
         self.b.visit(url)
 
     def teardown(self):
-        Switch.c.drop()
+        Switch.store.remove()
 
     def test_root(self):
         assert_switch_inactive(self.b)

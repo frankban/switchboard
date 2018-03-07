@@ -13,7 +13,8 @@ from blinker import signal
 from pymongo import DESCENDING
 
 from .settings import settings
-from .helpers import MockCollection
+from .store import InMemoryStore
+
 
 log = logging.getLogger(__name__)
 
@@ -26,14 +27,11 @@ INCLUDE = 'i'
 EXCLUDE = 'e'
 
 
-class MongoModel(object):
-    # May be lazy initialized to a real Mongo connection by calling
-    # switchboard.configure()
-    c = MockCollection()
+class Model(object):
+    # Store could be lazily overridden by manager.configure().
+    store = InMemoryStore()
 
-    pre_save = signal('pre_save')
     post_save = signal('post_save')
-    pre_delete = signal('pre_delete')
     post_delete = signal('post_delete')
 
     def __init__(self, *args, **kwargs):
@@ -45,19 +43,17 @@ class MongoModel(object):
         return self.__dict__.copy()
 
     def save(self):
-        if hasattr(self, '_id'):
-            previous = self.get(_id=self._id)
-        else:
-            previous = None
-        self.pre_save.send(previous)
-        _id = self.c.save(self.to_bson())
-        if not hasattr(self, '_id'):
-            self._id = _id
+        try:
+            id_ = self.id
+        except AttributeError:
+            id_ = None
+        previous = self.get(id=id_) if id_ else None
+        self.id = self.store.save(self.to_bson())
         self.post_save.send(self)
-        return _id
+        return self.id
 
     def delete(self):
-        return self.remove(key=self.key)
+        return self.remove(id=self.id)
 
     @classmethod
     def create(cls, **kwargs):
@@ -67,11 +63,11 @@ class MongoModel(object):
 
     @classmethod
     def get(cls, **kwargs):
-        result = cls.c.find_one(kwargs)
-        return cls(**result) if result else None
+        data = cls.store.get(**kwargs)
+        return cls(**data) if data else None
 
     @classmethod
-    def get_or_create(cls, defaults={}, **kwargs):
+    def get_or_create(cls, defaults=None, **kwargs):
         '''
         A port of functionality from the Django ORM. Defaults can be passed in
         if creating a new document is necessary. Keyword args are used to
@@ -79,159 +75,33 @@ class MongoModel(object):
         is the retrieved or created object and created is a boolean specifying
         whether a new object was created.
         '''
-        result = cls.c.find_one(kwargs)
-        if not result:
-            created = True
-            result = kwargs
-            result.update(defaults)
-            # Do an upsert here instead of a straight create to avoid a race
-            # condition with another instance creating the same record at
-            # nearly the same time.
-            cls.update(result, result, upsert=True)
-            result = cls.c.find_one(kwargs)
-            instance = cls(**result)
-        else:
-            created = False
-            instance = cls(**result)
+        data, created = cls.store.get_or_create(defaults or {}, **kwargs)
+        instance = cls(**data)
+        if created:
+            cls.post_save.send(instance)
         return instance, created
 
     @classmethod
     def find(cls, **kwargs):
-        return [cls(**s) for s in cls.c.find(kwargs)]
-
-    @classmethod
-    def update(cls, spec, document, upsert=False):
-        '''
-        Mimics a subset of PyMongo's Collection.update functionality. The spec
-        is used to search for the document to update, document contains the
-        values to be updated, and upsert specifies whether to do an insert if
-        the original document is not found.
-        '''
-        previous = cls.get(**spec)
-        cls.pre_save.send(previous)
-        result = cls.c.update(spec, document, upsert=upsert)
-        current = cls.get(**spec)
-        cls.post_save.send(current)
-        return result
+        return [cls(**data) for data in cls.store.filter(**kwargs)]
 
     @classmethod
     def remove(cls, **kwargs):
         instance = cls.get(**kwargs)
-        cls.pre_delete.send(instance)
-        result = cls.c.remove(kwargs)
+        result = cls.store.remove(**kwargs)
         cls.post_delete.send(instance)
         return result
 
     @classmethod
     def all(cls):
-        return [cls(**s) for s in cls.c.find()]
+        return cls.find()
 
     @classmethod
     def count(cls):
-        return cls.c.count()
+        return cls.store.count()
 
 
-class VersioningMongoModel(MongoModel):
-
-    def __init__(self, *args, **kwargs):
-        super(VersioningMongoModel, self).__init__(*args, **kwargs)
-
-    @classmethod
-    def _versioned_collection(cls):
-        return cls.c.database[cls.c.name + '.versions']
-
-    def _diff(self):
-        # Need to verify that the data contained in self is actually still in
-        # the collection
-        if hasattr(self, '_id'):
-            curr = self.get(_id=self._id)
-            curr = curr.to_bson() if curr else None
-        else:
-            curr = None
-        prev = self.previous_version()
-        prev = prev.to_bson() if prev else None
-        # Both models are present so something's changed between them
-        if prev and curr:
-            current_fields = curr.keys()
-            previous_fields = prev.keys()
-            added = [f for f in current_fields if f not in previous_fields]
-            deleted = [f for f in previous_fields if f not in current_fields]
-            changed = [f for f in current_fields if (f in previous_fields
-                                                     and prev[f] != curr[f])]
-            delta = dict(
-                added=dict([(k, curr[k]) for k in added]),
-                deleted=dict([(k, prev[k]) for k in deleted]),
-                changed=dict([(k, (prev[k], curr[k])) for k in changed]),
-            )
-        elif prev:  # Model's been deleted
-            delta = dict(
-                added={},
-                deleted=prev,
-                changed={},
-            )
-        elif curr:  # Model's been added
-            delta = dict(
-                added=curr,
-                deleted={},
-                changed={},
-            )
-        else:       # Neither model exists, no-op
-            delta = dict(
-                added={},
-                deleted={},
-                changed={},
-            )
-        return delta
-
-    def save_version(self, **kwargs):
-        delta = self._diff()
-        # if nothing changed, don't save anything
-        if delta and (delta['added'] or delta['deleted'] or delta['changed']):
-            doc = dict(
-                switch_id=self._id,
-                timestamp=datetime.utcnow(),
-                delta=delta,
-                **kwargs
-            )
-            self._versioned_collection().save(doc)
-
-    def _unpack_delta(self, version):
-        '''
-        Helper function that makes it easier to access the data nested with a
-        delta. Returns a tuple of (delta, added, deleted, changed).
-        '''
-        delta = version.get('delta', {})
-        added = delta.get('added', {})
-        deleted = delta.get('deleted', {})
-        changed = delta.get('changed', {})
-        return delta, added, deleted, changed
-
-    def previous_version(self):
-        if not hasattr(self, '_id'):
-            return self.__class__()
-        vc = self._versioned_collection()
-        versions = vc.find(dict(switch_id=self._id))
-        previous = dict()
-        # build up the previous state based on all past deltas
-        if versions:
-            # Before sorting, ensure we're working with a list and not a cursor
-            # or other iterable.
-            versions = list(versions)
-            versions.sort(key=lambda x: x['timestamp'])
-            for v in versions:
-                delta, added, deleted, changed = self._unpack_delta(v)
-                previous.update(added)
-                for k in deleted.keys():
-                    if k in previous:
-                        del previous[k]
-                for k, v in changed.iteritems():
-                    old, new = v
-                    previous[k] = new
-        previous = self.__class__(**previous) if previous else None
-        return previous
-
-
-class Switch(VersioningMongoModel):
+class Switch(Model):
     """
     Stores information on all switches. Generally handled under the global
     ``switchboard`` namespace.
@@ -456,13 +326,3 @@ class Switch(VersioningMongoModel):
         if last:
             data['conditions'].append(last)
         return data
-
-    def list_versions(self):
-        '''
-        Return a display-friendly list of all versions.
-        '''
-        vc = self._versioned_collection()
-        versions = vc.find(dict(switch_id=self._id))
-        if not versions:
-            return dict(versions={})
-        return list(versions.sort('timestamp', DESCENDING))

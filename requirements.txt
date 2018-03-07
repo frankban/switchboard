@@ -10,3 +10,4 @@ bottle
 paste
 splinter
 selenium==2.53.0
+sqlalchemy
