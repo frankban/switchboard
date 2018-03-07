@@ -17,11 +17,13 @@ from ..models import (
     DISABLED, GLOBAL,
 )
 from ..manager import SwitchManager
+from ..store import InMemoryStore
 from ..testutils import switches
 
 
 class TestSwitchContextManager(object):
     def setup(self):
+        Switch.store = InMemoryStore()
         self.operator = SwitchManager(auto_create=True)
 
     def teardown(self):
