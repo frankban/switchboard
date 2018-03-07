@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = '1.4.0'
+version = '2.0.0'
 
 setup(name='switchboard',
       version=version,
@@ -19,11 +19,11 @@ setup(name='switchboard',
       packages=find_packages(exclude=['ez_setup']),
       include_package_data=True,
       install_requires=[
-          'pymongo >= 2.3, < 3',
-          'blinker >= 1.2',
-          'WebOb >= 0.9',
-          'Mako >= 0.9',
-          'bottle == 0.12.8',
+          'blinker>=1.2',
+          'bottle== 0.12.8',
+          'Mako>=0.9',
+          'SQLAlchemy>=1.2.4'
+          'WebOb>=0.9',
       ],
       zip_safe=False,
       tests_require=[
